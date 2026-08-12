@@ -1,0 +1,202 @@
+------------------------------------------------------------------------
+
+------------------------------------------------------------------------
+
+## [Overview]{style="color:royalblue"}
+
+Here we provide the code used to create the results in our paper, and accompanying supplementary material. In order to run the code, please first download the data file "btbw_supercilium_data.csv" to your directory. See the "ReadMe.txt" file for descriptions of each variable.
+
+```{r Downloads, warning=FALSE}
+
+# Download Packages
+#install.packages(c('dplyr', 'MASS'), dep=TRUE)
+
+# Load Packages
+library(dplyr) 
+library(MASS)
+
+# Load csv file
+female_data <- read.csv("btbw_supercilium_data.csv")
+
+female_data <- female_data %>%
+  mutate(
+    mass   = na_if(mass, 0),
+    tarsus = na_if(tarsus, 0)
+  )
+
+# Remove 2 repeat individuals
+repeat_ids <- female_data %>%
+  filter(year %in% c(2021, 2022, 2023)) %>% count(combo) %>%
+  filter(n > 1) %>% pull(combo)
+female_data <- female_data %>% filter(!(combo %in% repeat_ids & year == 2022))
+
+# Data transformations
+female_data$f_prey <- sqrt(female_data$f_prey_biomass)
+female_data$m_prey <- sqrt(female_data$m_prey_biomass)
+
+# Within pair difference
+female_data$delta_prey <- female_data$f_prey - female_data$m_prey
+
+```
+
+## [Plumage correlations]{style="color:royalblue"}
+
+```{r Plumage, warning=FALSE}
+
+sapply(female_data[, c("s_r_area", "s_r_bright")], function(x) {
+  c(Min  = min(x, na.rm = TRUE), Max  = max(x, na.rm = TRUE),
+    Mean = mean(x, na.rm = TRUE), SD   = sd(x, na.rm = TRUE),
+    N    = sum(!is.na(x)) ) })
+
+cor_size_lr <- cor.test(female_data$s_r_area, female_data$s_l_area, method = "pearson")
+cor_size_lr
+
+cor_bright_lr <- cor.test(female_data$s_r_bright, female_data$s_l_bright, method = "pearson")
+cor_bright_lr
+
+cor_size_bright <- cor.test(female_data$s_r_bright, female_data$s_r_area, method = "pearson")
+cor_size_bright
+
+cor_supercilium_undereye_size <- cor.test(female_data$s_r_area, female_data$u_r_area, method = "pearson")
+cor_supercilium_undereye_size
+
+cor_supercilium_undereye_bright <- cor.test(female_data$s_r_bright, female_data$u_r_bright, method = "pearson")
+cor_supercilium_undereye_bright
+
+# Differences between years
+size.year.aov <- aov(s_r_area ~ factor(year), data = female_data)
+summary(size.year.aov)
+confint(size.year.aov)
+
+bright.year.aov <- aov(s_r_bright ~ factor(year), data = female_data)
+summary(bright.year.aov)
+confint(bright.year.aov)
+
+# Differences between elevation zones
+size.elev.aov <- aov(s_r_area ~ factor(elevation), data = female_data)
+summary(size.elev.aov)
+confint(size.elev.aov)
+
+bright.elev.aov <- aov(s_r_bright ~ factor(elevation), data = female_data)
+summary(bright.elev.aov)
+confint(bright.elev.aov)
+
+
+```
+
+## [Table 1]{style="color:royalblue"}
+
+```{r Body measurments, warning=FALSE}
+# Individual quality
+body_measurment_comp_model <- lm(mass ~ tarsus + age + factor(year), data = female_data)
+summary(body_measurment_comp_model)
+confint(body_measurment_comp_model)
+
+body_size_model <- lm(tarsus ~ s_r_area + s_r_bright + factor(year), data = female_data)
+summary(body_size_model)
+confint(body_size_model)
+
+body_mass_model <- lm(mass ~ s_r_area + s_r_bright + factor(year), data = female_data)
+summary(body_mass_model)
+confint(body_mass_model)
+
+female_data$factor_age <- factor(female_data$age)
+age_model <- glm(factor_age ~ s_r_area + s_r_bright + factor(year), family = binomial, data = female_data)
+summary(age_model)
+confint(age_model)
+```
+
+## [Table 2]{style="color:royalblue"}
+
+```{r Breeding outcomes, warning=FALSE}
+# Reproductive correlates
+reproductive_success_model <- glm.nb(n_fledge ~ s_r_area + s_r_bright + cid + factor(year),data = female_data)
+summary(reproductive_success_model)
+confint(reproductive_success_model)  
+
+territory_quality_model <- lm(food_availability ~ s_r_area + s_r_bright + factor(year), data = female_data)
+
+summary(territory_quality_model)
+confint(territory_quality_model)
+
+# Female provisioning
+female_provisioning_model <- lm(f_prey ~ s_r_area + s_r_bright + factor(year), data = female_data)
+summary(female_provisioning_model)
+confint(female_provisioning_model)
+
+# Male provisioning
+male_provisioning_model <- lm(m_prey ~ s_r_area + s_r_bright + factor(year), data = female_data)
+summary(male_provisioning_model)
+confint(male_provisioning_model)
+
+
+```
+
+## [Bonferroni correction]{style="color:royalblue"}
+
+```{r Breeding outcomes, warning=FALSE}
+
+# Bonferroni correction
+get_p <- function(model, term) {
+  coefs <- summary(model)$coefficients
+  coefs[term, "Pr(>|t|)"]
+}
+
+get_p_glm <- function(model, term) {
+  coefs <- summary(model)$coefficients
+  coefs[term, "Pr(>|z|)"]
+}
+
+p_values <- c(
+  body_size_s_r_area       = get_p(body_size_model, "s_r_area"),
+  body_size_s_r_bright     = get_p(body_size_model, "s_r_bright"),
+  body_mass_s_r_area       = get_p(body_mass_model, "s_r_area"),
+  body_mass_s_r_bright     = get_p(body_mass_model, "s_r_bright"),
+  age_s_r_area             = get_p_glm(age_model, "s_r_area"),
+  age_s_r_bright           = get_p_glm(age_model, "s_r_bright"),
+
+  repro_success_s_r_area   = get_p_glm(reproductive_success_model, "s_r_area"),
+  repro_success_s_r_bright = get_p_glm(reproductive_success_model, "s_r_bright"),
+  territory_s_r_area       = get_p(territory_quality_model, "s_r_area"),
+  territory_s_r_bright     = get_p(territory_quality_model, "s_r_bright"),
+  female_prov_s_r_area     = get_p(female_provisioning_model, "s_r_area"),
+  female_prov_s_r_bright   = get_p(female_provisioning_model, "s_r_bright"),
+  male_prov_s_r_area       = get_p(male_provisioning_model, "s_r_area"),
+  male_prov_s_r_bright     = get_p(male_provisioning_model, "s_r_bright")
+)
+
+p_adjusted <- p.adjust(p_values, method = "bonferroni")
+
+bonferroni_results <- data.frame(
+  test         = names(p_values),
+  raw_p        = round(p_values, 4),
+  bonferroni_p = round(p_adjusted, 4)
+)
+
+bonferroni_results
+
+
+```
+
+## [Figure S2]{style="color:royalblue"}
+
+```{r Figure_S2, warning=FALSE}
+# Size
+hist(female_data$s_r_area, breaks = 15, main = "Histogram of supercilium size 2021-2023", 
+     xlab = "Supercilium size (mm2)")
+range(female_data$s_r_area)
+mean(female_data$s_r_area) 
+sd(female_data$s_r_area)
+length(female_data$s_r_area)
+
+# Brightness
+hist(female_data$s_r_bright, breaks = 15,
+     main = "Histogram of supercilium brightness 2021, 2023", 
+     xlab = "Supercilium brightness (RGB)")
+range(female_data$s_r_bright, na.rm=TRUE)
+mean(female_data$s_r_bright, na.rm=TRUE) 
+sd(female_data$s_r_bright, na.rm=TRUE)
+length(female_data$s_r_bright[!is.na(female_data$s_r_bright)])
+
+
+```
